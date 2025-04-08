@@ -1,0 +1,6 @@
+debug: true
+tcp:
+    host: 127.0.0.1
+    port: 4567
+ws:
+    url: 127.0.0.1:3000
