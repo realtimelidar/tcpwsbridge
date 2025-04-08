@@ -34,8 +34,10 @@ type Client struct {
 
 func GetNextFreeId() (uint32, error) {
 	id := uint32(0)
+	mtx.RLock()
 	for {
 		if _, ok := ClientPool[id]; !ok {
+			mtx.RUnlock()
 			return id, nil
 		}
 		id++
@@ -44,6 +46,7 @@ func GetNextFreeId() (uint32, error) {
 			break
 		}
 	}
+	mtx.RUnlock()
 	return  0, fmt.Errorf("client pool is full")
 }
 
