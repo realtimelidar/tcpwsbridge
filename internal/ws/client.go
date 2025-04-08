@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/realtimelidar/tcpwsbridge/internal/logger"
+	"github.com/realtimelidar/tcpwsbridge/internal/tcp"
 )
 
 var (
@@ -24,6 +25,8 @@ type Client struct {
 	Id uint32
 
 	SendChan chan []byte
+	RecvChan chan []byte
+
 	Mutex *sync.RWMutex
 
 	Terminate chan struct{}
@@ -52,6 +55,19 @@ func GetNextFreeId() (uint32, error) {
 
 func (c *Client) Initilize(ctx context.Context) {
 	childCtx, cancel := context.WithCancel(ctx)
+
+	recv, send, err := tcp.NewConnection(childCtx)
+
+	if err != nil {
+		logger.Errorf("Could not create TCP connection for client %d", c.Id)
+
+		cancel()
+		c.Close()
+		return
+	}
+
+	c.SendChan = send
+	c.RecvChan = recv
 
 	go c.Read(childCtx)
 	go c.Write(childCtx)
@@ -85,7 +101,7 @@ func (c *Client) Read(ctx context.Context){
 			}
 
 			if mType == websocket.BinaryMessage {
-				tcpSendChannel <- p
+				c.SendChan <- p
 			}
 		}
 	}
@@ -124,7 +140,7 @@ func (c *Client) Write(ctx context.Context){
 				continue
 			}
 
-		case data := <-c.SendChan:
+		case data := <-c.RecvChan:
 			err := c.Socket.WriteMessage(websocket.BinaryMessage, data)
 			if err != nil {
 				logger.Errorf("Failed to send TCP data to websocket client %d: %v", c.Id, err)
@@ -137,6 +153,9 @@ func (c *Client) Write(ctx context.Context){
 func (c *Client) Close() {
 	c.Socket.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInvalidFramePayloadData, ""), time.Time{})
 	c.Socket.Close()
+
+	close(c.SendChan)
+	close(c.RecvChan)
 
 	delete(ClientPool, c.Id)
 	logger.Infof("Disconnected client %d", c.Id)

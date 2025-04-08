@@ -19,9 +19,8 @@ var (
 		},
 	}
 
+	ctx context.Context
 	mtx sync.RWMutex = sync.RWMutex{}
-	tcpSendChannel chan []byte
-	tcpRecvChannel chan []byte
 )
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
@@ -60,29 +59,14 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	logger.Infof("New client connected with id %d", c.Id)
 
-	go c.Initilize(context.Background())
+	go c.Initilize(ctx)
 }
 
 func attachToServer() {
 	myhttp.AddFuncHandler("/", wsHandler)
 }
 
-func Init(ctx context.Context, tcpSendChan chan []byte, tcpRecvChan chan []byte) {
+func Init(c context.Context) {
+	ctx = c
 	attachToServer()
-
-	tcpSendChannel = tcpSendChan
-	tcpRecvChannel = tcpRecvChan
-
-	loop: for {
-		select {
-		case <-ctx.Done():
-			break loop
-		case data := <-tcpRecvChan:
-			mtx.RLock()
-			for _, c := range ClientPool {
-				c.SendChan <- data
-			}
-			mtx.RUnlock()
-		}
-	}
 }

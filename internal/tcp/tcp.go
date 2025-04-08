@@ -11,63 +11,64 @@ import (
 )
 
 var (
-	conn *net.TCPConn
-	sendChannel chan []byte
-	receiveChannel chan []byte
-	buff = make([]byte, 1024)
+	config cli.TcpConfigParams
+	formattedAddr string
 )
 
-func Init(config cli.TcpConfigParams, sendChan chan []byte, recvChan chan []byte) {
-	formatted := fmt.Sprintf("%s:%d", config.Host, config.Port)
-	addr, err := net.ResolveTCPAddr("tcp", formatted)
-
-	if err != nil {
-		logger.Fatalf("Invalid TCP address: %s", formatted)
-	}
-
-	conn, err = net.DialTCP("tcp", nil, addr)
-
-	if err != nil {
-		logger.Fatalf("Failed to connect to TCP server: %v", err)
-	}
-
-	sendChannel = sendChan
-	receiveChannel = recvChan
-
-	logger.Info("Connected to TCP server")
+func Init(conf cli.TcpConfigParams,) {
+	config = conf
+	formattedAddr = fmt.Sprintf("%s:%d", config.Host, config.Port)
 }
 
-func Run(ctx context.Context) {
-	loop: for {
-		select {
-		case <-ctx.Done():
-			break loop
-		case data := <-sendChannel:
-			_, err := conn.Write(data)
+func NewConnection(ctx context.Context) (chan []byte, chan []byte, error) {
+	addr, err := net.ResolveTCPAddr("tcp", formattedAddr)
 
-			if err != nil {
-				logger.Errorf("Failed to send data to TCP server: %v", err)
-			}
-		default:
-			conn.SetReadDeadline(time.Now().Add(5 * time.Millisecond))
-			n, err := conn.Read(buff[0:])
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid TCP address: %s", formattedAddr)
+	}
 
-			if err != nil {
-				neterr, ok := err.(net.Error)
-				if !ok || !neterr.Timeout() {
-					logger.Errorf("Failed to read from TCP server. %v", err)
+	conn, err := net.DialTCP("tcp", nil, addr)
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to connect to TCP server: %v", err)
+	}
+
+	logger.Info("New connection to TCP server")
+
+	s := make(chan []byte)
+	r := make(chan []byte)
+
+	go func(ctx context.Context, conn *net.TCPConn) {
+		buf := [1024]byte{}
+		loop: for {
+			select {
+			case <-ctx.Done():
+				conn.Close()
+				logger.Info("Closing this TCP connection")
+				break loop
+			case dataToSend := <-s:
+				// Data to be sent to TCP server
+				_, err := conn.Write(dataToSend)
+				if err != nil {
+					logger.Errorf("Failed to send data to TCP server: %v", err)
 				}
-			}
-			
-			receiveChannel <- buff[:n]
-			logger.Debugf("Received %d bytes from server", n)
-		}
-	}
-}
+			default:
+				conn.SetReadDeadline(time.Now().Add(5 * time.Millisecond))
 
-func Close() {
-	if conn != nil {
-		conn.Close()
-		conn = nil
-	}
+				n, err := conn.Read(buf[0:])
+				if err != nil {
+					neterr, ok := err.(net.Error)
+					if !ok || !neterr.Timeout() {
+						logger.Errorf("Failed to read from TCP server. %v", err)
+					}
+				}
+
+				if n > 0 {
+					r <- buf[:n]
+				}
+			}	
+		}
+	}(ctx, conn)
+
+	return r, s, nil
 }

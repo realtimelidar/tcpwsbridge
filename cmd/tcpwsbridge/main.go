@@ -43,13 +43,10 @@ func main() {
 	cli.ParseConfig(rawArgs, &config)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	tcpSendChan := make(chan []byte)
-	tcpRecvChan := make(chan []byte)
+	
+	tcp.Init(config.Tcp)
 
-	tcp.Init(config.Tcp, tcpSendChan, tcpRecvChan)
-	go tcp.Run(ctx)
-
-	go ws.Init(ctx, tcpSendChan, tcpRecvChan)
+	go ws.Init(ctx)
 	http.Run(config.Websockets)
 
 	// Listen for signals, then shutdown if detected
@@ -58,9 +55,4 @@ func main() {
 
 	logger.Info("Exiting...")
 	cancel()
-
-	close(tcpSendChan)
-	close(tcpRecvChan)
-
-	tcp.Close()
 }
