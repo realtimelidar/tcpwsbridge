@@ -101,7 +101,10 @@ func (c *Client) Read(ctx context.Context){
 			}
 
 			if mType == websocket.BinaryMessage {
+				logger.Infof("[client %d] websocket > tcp (%d bytes)", c.Id, len(p))
 				c.SendChan <- p
+			} else {
+				logger.Errorf("Received unsupported message type: %d", mType)
 			}
 		}
 	}
@@ -145,6 +148,7 @@ func (c *Client) Write(ctx context.Context){
 			if err != nil {
 				logger.Errorf("Failed to send TCP data to websocket client %d: %v", c.Id, err)
 			}
+			logger.Infof("[client %d] websocket < tcp (%d bytes)", c.Id, len(data))
 		}
 
 	}
