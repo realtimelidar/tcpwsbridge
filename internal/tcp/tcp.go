@@ -151,7 +151,7 @@ func NewConnection(ctx context.Context) (chan []byte, chan []byte, error) {
 					}
 
 					encodedDataLen := binary.LittleEndian.Uint64(buf[0:])
-					dataLen := encodedDataLen & 0xffffff
+					dataLen := encodedDataLen & 0xffffffff
 
 					reader := io.LimitReader(conn, int64(dataLen - 8))
 					
