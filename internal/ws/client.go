@@ -79,6 +79,7 @@ func (c *Client) Initilize(ctx context.Context) {
 
 func (c *Client) Read(ctx context.Context){
 	c.Socket.SetPongHandler(func(string) error {
+		logger.Infof("Received pong from client %d!", c.Id)
 		c.SetLastTimestamp(-1)
 		return nil
 	})
@@ -120,6 +121,7 @@ func (c *Client) Write(ctx context.Context){
 			break loop
 		case <-ticker.C:
 			if c.GetLastTimestamp() < 0 {
+				c.SetLastTimestamp(time.Now().Unix())
 				err := c.Socket.WriteMessage(websocket.PingMessage, nil)
 
 				if err != nil {
@@ -131,7 +133,7 @@ func (c *Client) Write(ctx context.Context){
 					continue
 				}
 
-				c.SetLastTimestamp(time.Now().Unix())
+				logger.Infof("Sent ping to client %d!", c.Id)
 			} else {
 				logger.Errorf("Lost connection (no ping) with client %d", c.Id)
 

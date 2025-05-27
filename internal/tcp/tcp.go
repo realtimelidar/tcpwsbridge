@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/realtimelidar/tcpwsbridge/internal/cli"
@@ -16,6 +17,18 @@ import (
 var (
 	config cli.TcpConfigParams
 	formattedAddr string
+
+	recvBuffPool sync.Pool = sync.Pool{
+		New: func() interface{} {
+			return make([]byte, 1024) // or a typical upper bound
+		},
+	}
+
+	msgBuffPool sync.Pool = sync.Pool{
+		New: func() any {
+			return make([]byte, 10*1024*1024)
+		},
+	}
 )
 
 func Init(conf cli.TcpConfigParams,) {
@@ -38,15 +51,14 @@ func NewConnection(ctx context.Context) (chan []byte, chan []byte, error) {
 
 	logger.Info("New connection to TCP server")
 
+	// Channel to send data to TCP (From web)
 	s := make(chan []byte)
+
+	// Channel to receive data from TCP (To web)
 	r := make(chan []byte)
 
+	// Goroutine to get data from websocket and send to TCP
 	go func(ctx context.Context, conn *net.TCPConn) {
-		buf := [8]byte{}
-		magicNumBuf := [18]byte{}
-
-		magicNum := false
-
 		loop: for {
 			select {
 			case <-ctx.Done():
@@ -81,7 +93,24 @@ func NewConnection(ctx context.Context) (chan []byte, chan []byte, error) {
 						continue
 					}
 					sentBytes += n
-				}	
+				}
+			}
+		}
+	}(ctx, conn)
+
+	// Get data from TCP and end to Websocket
+	go func(ctx context.Context, conn *net.TCPConn) {
+		buf := [8]byte{}
+		magicNumBuf := [18]byte{}
+
+		magicNum := false
+
+		loop: for {
+			select {
+			case <-ctx.Done():
+				conn.Close()
+				logger.Info("Closing this TCP connection")
+				break loop
 			default:
 				conn.SetReadDeadline(time.Now().Add(5 * time.Millisecond))
 
@@ -126,8 +155,19 @@ func NewConnection(ctx context.Context) (chan []byte, chan []byte, error) {
 
 					reader := io.LimitReader(conn, int64(dataLen - 8))
 					
-					recvBuf := make([]byte, 1024)
-					msgBuf := make([]byte, dataLen)
+					recvBuf := recvBuffPool.Get().([]byte)
+					defer recvBuffPool.Put(recvBuf)
+					// recvBuf := make([]byte, 1024)
+
+					var msgBuf []byte
+
+					if dataLen < 10*1024*1024 {
+						msgBuf = msgBuffPool.Get().([]byte)[:dataLen]
+						defer msgBuffPool.Put(msgBuf)
+					} else {
+						msgBuf = make([]byte, dataLen)
+					}
+					// msgBuf := make([]byte, dataLen)
 					
 					copy(msgBuf, buf[:])
 					
