@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/realtimelidar/tcpwsbridge/internal/cli"
@@ -17,18 +16,6 @@ import (
 var (
 	config cli.TcpConfigParams
 	formattedAddr string
-
-	recvBuffPool sync.Pool = sync.Pool{
-		New: func() interface{} {
-			return make([]byte, 1024) // or a typical upper bound
-		},
-	}
-
-	msgBuffPool sync.Pool = sync.Pool{
-		New: func() any {
-			return make([]byte, 10*1024*1024)
-		},
-	}
 )
 
 func Init(conf cli.TcpConfigParams,) {
@@ -56,6 +43,9 @@ func NewConnection(ctx context.Context) (chan []byte, chan []byte, error) {
 
 	// Channel to receive data from TCP (To web)
 	r := make(chan []byte)
+
+	recvBuf := make([]byte, 1024)
+	msgBuff := make([]byte, 500*1024*1024)
 
 	// Goroutine to get data from websocket and send to TCP
 	go func(ctx context.Context, conn *net.TCPConn) {
@@ -155,19 +145,20 @@ func NewConnection(ctx context.Context) (chan []byte, chan []byte, error) {
 
 					reader := io.LimitReader(conn, int64(dataLen - 8))
 					
-					recvBuf := recvBuffPool.Get().([]byte)
-					defer recvBuffPool.Put(recvBuf)
 					// recvBuf := make([]byte, 1024)
 
-					var msgBuf []byte
+					// var msgBuf []byte
 
-					if dataLen < 10*1024*1024 {
-						msgBuf = msgBuffPool.Get().([]byte)[:dataLen]
-						defer msgBuffPool.Put(msgBuf)
-					} else {
-						msgBuf = make([]byte, dataLen)
-					}
+					// if dataLen < 500*1024*1024 {
+					// 	msgBuf = msgBuffPool.Get().([]byte)[:dataLen]
+					// 	defer msgBuffPool.Put(msgBuf)
+					// } else {
+					// 	msgBuf = make([]byte, dataLen)
+					// }
+
 					// msgBuf := make([]byte, dataLen)
+
+					msgBuf := msgBuff[:dataLen]
 					
 					copy(msgBuf, buf[:])
 					
