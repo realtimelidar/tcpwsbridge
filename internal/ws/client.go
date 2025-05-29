@@ -146,6 +146,7 @@ func (c *Client) Write(ctx context.Context){
 			}
 
 		case data := <-c.RecvChan:
+			// logger.Infof("client.go: %v", data)
 			err := c.Socket.WriteMessage(websocket.BinaryMessage, data)
 			if err != nil {
 				logger.Errorf("Failed to send TCP data to websocket client %d: %v", c.Id, err)

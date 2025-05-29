@@ -43,10 +43,10 @@ func NewConnection(ctx context.Context) (chan []byte, chan []byte, error) {
 	logger.Info("New connection to TCP server")
 
 	// Channel to send data to TCP (From web)
-	s := make(chan []byte)
+	s := make(chan []byte, 100)
 
 	// Channel to receive data from TCP (To web)
-	r := make(chan []byte)
+	r := make(chan []byte, 100)
 
 	recvBuf := make([]byte, 1024)
 	msgBuff := make([]byte, BUFF_SIZE)
@@ -193,26 +193,26 @@ func NewConnection(ctx context.Context) (chan []byte, chan []byte, error) {
 
 					// Keep reading until the end of this message
 					// EOF = last byte received
-					readInThisBuff := 8
+					readInThisBuff := uint64(8)
 					for err != io.EOF {
 						recvBytes += uint64(n)
-						freeSpace := BUFF_SIZE - readInThisBuff
+						freeSpace := buffLen - uint64(readInThisBuff)
 
-						logger.Infof("Read %d from TCP, %d remaining, current buffer usage %d, free space %d", n, dataLen - recvBytes, readInThisBuff, freeSpace)
+						// logger.Infof("Read %d from TCP, %d remaining, current buffer usage %d, free space %d", n, dataLen - recvBytes, readInThisBuff, freeSpace)
 						// logger.Infof("%v", recvBuf[:n])
 
 						// If we have space in the buffer for this read
 						// then we copy contents to the buffer
-						if freeSpace >= n {
-							logger.Infof("Contents fit buffer")
+						if freeSpace >= uint64(n) {
+							// logger.Infof("Contents fit buffer")
 							copy(msgBuf[readInThisBuff:], recvBuf[:n])
 
-							readInThisBuff += n
+							readInThisBuff += uint64(n)
 
 							conn.SetReadDeadline(time.Now().Add(5 * time.Millisecond))
 							n, err = reader.Read(recvBuf)
 						} else {
-							logger.Infof("Contents DO NOT fit buffer")
+							// logger.Infof("Contents DO NOT fit buffer")
 
 							// Otherwise we need to send contents to websocket and reset buffer
 
@@ -221,49 +221,32 @@ func NewConnection(ctx context.Context) (chan []byte, chan []byte, error) {
 							copy(msgBuf[readInThisBuff:], recvBuf[:freeSpace])
 
 							// Send this buffer
-							logger.Infof("Sending to websocket fragmentated message")
-							r <- msgBuf
+							// logger.Infof("Sending to websocket fragmentated message")
+							// logger.Infof("tcp.go: %v", msgBuf)
+
+							tmp := make([]byte, buffLen)
+							copy(tmp, msgBuf)
+							r <- tmp
 
 							// Reset buffer, but keep bytes left after filling it (n - freeSpace)
 							// freeSpace:n = We already processed "freeSpace" bytes (because we filled the free space already)
 							// 				 So we want to take the remaing (n - freeSpace, that is, from "freeSpace" up to "n")
-							readInThisBuff = n - freeSpace
+							readInThisBuff = uint64(n) - freeSpace
 							copy(msgBuf, recvBuf[freeSpace:n])
 
-							logger.Infof("Remaining %d for next buffer iteration", readInThisBuff)
-
-							
-							// r <- msgBuf
+							// logger.Infof("Remaining %d for next buffer iteration", readInThisBuff)
 
 							conn.SetReadDeadline(time.Now().Add(5 * time.Millisecond))
 							n, err = reader.Read(recvBuf)
 						}
 					}
 
-					logger.Infof("Sending last (or only) websocket message")
-					r <- msgBuf[:readInThisBuff]
+					tmp := make([]byte, readInThisBuff)
+					copy(tmp, msgBuf)
+					r <- tmp
 
-					// for recvBytes < dataLen {
-					// 	i := uint64(0)
-					// 	for err != io.EOF && recvBytes < (i*100*1024) {
-					// 		logger.Infof("%v", recvBuf[:n])
-					// 		logger.Infof("%d", recvBytes % (100*1024))
-					// 		copy(msgBuf[recvBytes % (100*1024):], recvBuf[:n])
-					// 		recvBytes += uint64(n)
-
-					// 		if recvBytes < (dataLen - 8) {
-					// 			conn.SetReadDeadline(time.Now().Add(5 * time.Millisecond))
-					// 			n, err = reader.Read(recvBuf)
-					// 		} else {
-					// 			break
-					// 		}
-					// 	}
-
-					// 	logger.Infof("Sending first chunk at %d", recvBytes % (100*1024))
-					// 	logger.Infof("%v", msgBuf[:recvBytes % (100*1024)])
-					// 	r <- msgBuf[:recvBytes % (100*1024)]
-					// 	i++
-					// }
+					// logger.Infof("Sending last (or only) websocket message")
+					// r <- msgBuf[:readInThisBuff]
 				}
 			}	
 		}
