@@ -18,11 +18,20 @@ type WebsocketConfigParams struct {
 	Url string `yaml:"url"`
 }
 
+type MqttConfigParams struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	Topic    string `yaml:"topic"`
+	Username string `yaml:"user"`
+	Password string `yaml:"pass"`
+}
+
 type ConfigParams struct {
 	DebugEnabled bool `yaml:"debug"`
 
 	Tcp TcpConfigParams `yaml:"tcp"`
 	Websockets WebsocketConfigParams `yaml:"ws"`
+	Mqtt MqttConfigParams `yaml:"mqtt"`
 }
 
 const (

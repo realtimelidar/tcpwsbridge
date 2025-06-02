@@ -4,3 +4,9 @@ tcp:
     port: 4567
 ws:
     url: 127.0.0.1:3000
+mqtt:
+    host: 127.0.0.1
+    port: 1883
+    topic: pointcloud
+    username:
+    password:

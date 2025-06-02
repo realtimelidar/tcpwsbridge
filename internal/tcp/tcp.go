@@ -60,33 +60,10 @@ func NewConnection(ctx context.Context) (chan []byte, chan []byte, error) {
 				logger.Info("Closing this TCP connection")
 				break loop
 			case dataToSend := <-s:
-				// Data to be sent to TCP server
-				dataLen := len(dataToSend)
-				sentBytes := 0
-
-				if (dataLen < 1024) {
-					_, err := conn.Write(dataToSend)
-					if err != nil {
-						logger.Errorf("Failed to send data to TCP server: %v", err)
-						continue
-					}
-
+				_, err := conn.Write(dataToSend)
+				if err != nil {
+					logger.Errorf("Failed to send data to TCP server: %v", err)
 					continue
-				}
-
-				for sentBytes != dataLen {
-					max := dataLen + 1024
-					if max > len(dataToSend) {
-						max = len(dataToSend)
-					}
-
-					n, err := conn.Write(dataToSend[sentBytes - 1:max])
-
-					if err != nil {
-						logger.Errorf("Failed to send data to TCP server: %v", err)
-						continue
-					}
-					sentBytes += n
 				}
 			}
 		}

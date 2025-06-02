@@ -9,6 +9,7 @@ import (
 	"github.com/realtimelidar/tcpwsbridge/internal/cli"
 	"github.com/realtimelidar/tcpwsbridge/internal/http"
 	"github.com/realtimelidar/tcpwsbridge/internal/logger"
+	"github.com/realtimelidar/tcpwsbridge/internal/mqtt"
 	"github.com/realtimelidar/tcpwsbridge/internal/tcp"
 	"github.com/realtimelidar/tcpwsbridge/internal/ws"
 )
@@ -45,6 +46,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	
 	tcp.Init(config.Tcp)
+
+	go mqtt.Init(ctx, config.Mqtt)
 
 	go ws.Init(ctx)
 	http.Run(config.Websockets)
