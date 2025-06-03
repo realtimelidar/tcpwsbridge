@@ -12,6 +12,11 @@ import (
 	"github.com/realtimelidar/tcpwsbridge/internal/tcp"
 )
 
+var (
+	client       pMqtt.Client                     = nil
+)
+
+
 // Initialize Mqtt middleware
 // Open a connection with the Mqtt broker from config file and start waiting for messages
 // topicInfo: Array with To/From topic pairs
@@ -45,30 +50,39 @@ func Init(ctx context.Context, config cli.MqttConfigParams) {
 
 	logger.Info("Opened CaptureDevice connection")
 
-	// When new messages are received, forward them to middleware goroutines
-	opts.SetDefaultPublishHandler(func(client pMqtt.Client, msg pMqtt.Message) {
-		payload := msg.Payload()
-		payloadLen := len(payload)
-		msgLen := uint64(8 + len(cborHeader) + payloadLen)
-		// encodedLen := msgLen | (13 << 32)
+	opts.SetOnConnectHandler(func(c pMqtt.Client) {
+		token := client.Subscribe(config.Topic, 0, func(client pMqtt.Client, msg pMqtt.Message) {
+			payload := msg.Payload()
+			payloadLen := len(payload)
+			
+			logger.Infof("[CaptureDevice] Received %d bytes", payloadLen)
+			// logger.Infof("%v", payload)
 
-		// InsertPoint messages are not big enough to overflow RAM
-		msgBuff := make([]byte, msgLen)
+			msgLen := uint64(8 + len(cborHeader) + payloadLen)
+			// encodedLen := msgLen | (13 << 32)
 
-		binary.LittleEndian.PutUint64(msgBuff, msgLen)
-		
-		for i := 8; i < 13; i++ {
-			msgBuff[i] = cborHeader[i]
+			// InsertPoint messages are not big enough to overflow RAM
+			msgBuff := make([]byte, msgLen)
+
+			binary.LittleEndian.PutUint64(msgBuff, msgLen)
+			
+			for i := 0; i < 13; i++ {
+				msgBuff[i + 8] = cborHeader[i]
+			}
+
+			for i := 0; i < payloadLen; i++ {
+				msgBuff[i + 13 + 8] = payload[i]
+			}
+
+			sendChan <- msgBuff
+		})
+
+		if token.Wait() && token.Error() != nil {
+			logger.Fatalf("Failed to subscribe to pointcloud topic: %v", token.Error())
 		}
-
-		for i := 13; i < payloadLen; i++ {
-			msgBuff[i] = payload[i]
-		}
-
-		sendChan <- msgBuff[:(8 + 13 + payloadLen)]
 	})
 
-	client := pMqtt.NewClient(opts)
+	client = pMqtt.NewClient(opts)
 
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		logger.Fatalf("Mqtt: Could not connect to Mqtt remote host: %v", token.Error())
